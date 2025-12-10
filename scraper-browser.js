@@ -43,8 +43,7 @@ async function makeRequest(url, method = 'GET', data = null) {
 }
 
 // Fetch list of talents from a specific page
-async function fetchTalentsPage(page, location = 'united_states_only') {
-  const url = `${API_BASE}/talent/?custom_location=${location}&page=${page}`;
+async function fetchTalentsPage(page, url) {
   console.log(`Fetching page ${page}...`);
   
   try {
@@ -101,7 +100,7 @@ function delay(ms) {
 }
 
 // Main scraping function
-async function scrapeTalents(startPage, endPage) {
+async function scrapeTalents(startPage, endPage, url) {
   console.log(`Starting scrape from page ${startPage} to ${endPage}...`);
   
   let currentPage = startPage;
@@ -110,7 +109,7 @@ async function scrapeTalents(startPage, endPage) {
 
   while (currentPage <= endPage) {
     // Fetch list of talents for current page
-    const pageData = await fetchTalentsPage(currentPage);
+    const pageData = await fetchTalentsPage(currentPage, url);
     
     if (!pageData || !pageData.results) {
       console.log(`No data found for page ${currentPage}, stopping...`);
@@ -176,11 +175,11 @@ async function scrapeTalents(startPage, endPage) {
 
 // Usage in browser console:
 // 1. Copy and paste this entire script
-// 2. Then run: scrapeTalents(1, 10)
-//    Or: scrapeTalents(START_PAGE, END_PAGE)
+// 2. Then run: scrapeTalents(1, 10, "https://app.usebraintrust.com/api/talent/?experience=1-3&role=5&ordering=newest&custom_location=united_states_only")
+//    Or: scrapeTalents(START_PAGE, END_PAGE, "https://app.usebraintrust.com/api/talent/?experience=1-3&role=5&ordering=newest&custom_location=united_states_only")
 //
 // Example:
-// scrapeTalents(1, 5)  // Scrape pages 1 to 5
+// scrapeTalents(1, 5, "https://app.usebraintrust.com/api/talent/?experience=1-3&role=5&ordering=newest&custom_location=united_states_only")  // Scrape pages 1 to 5
 
 // Make functions available globally for browser console
 if (typeof window !== 'undefined') {
@@ -189,7 +188,6 @@ if (typeof window !== 'undefined') {
   window.fetchTalentDetails = fetchTalentDetails;
   window.saveTalentToMongoDB = saveTalentToMongoDB;
 
-  console.log('Scraper loaded! Use scrapeTalents(startPage, endPage) to start scraping.');
-  console.log('Example: scrapeTalents(1, 10)');
+  console.log('Scraper loaded! Use scrapeTalents(startPage, endPage, url) to start scraping.');
+  console.log('Example: scrapeTalents(1, 10, "https://app.usebraintrust.com/api/talent/?experience=1-3&role=5&ordering=newest&custom_location=united_states_only")');
 }
-
