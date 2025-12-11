@@ -47,7 +47,7 @@ async function fetchTalentsPage(page, url) {
   console.log(`Fetching page ${page}...`);
   
   try {
-    const response = await makeRequest(url);
+    const response = await makeRequest(`${url}&page=${page}`);
     if (response.status === 200) {
       return response.data;
     } else {
