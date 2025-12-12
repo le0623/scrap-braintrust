@@ -174,6 +174,8 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20');
     const search = searchParams.get('search') || '';
     const role = searchParams.get('role') || '';
+    const nationality = searchParams.get('nationality') || '';
+    const available = searchParams.get('available') === 'true';
     const skip = (page - 1) * limit;
 
     const db = await getDatabase();
@@ -184,17 +186,22 @@ export async function GET(request: NextRequest) {
     
     if (search) {
       query.$or = [
-        { 'user.first_name': { $regex: search, $options: 'i' } },
-        { 'user.last_name': { $regex: search, $options: 'i' } },
         { 'user.public_name': { $regex: search, $options: 'i' } },
-        { 'user.title': { $regex: search, $options: 'i' } },
         { 'user.introduction_headline': { $regex: search, $options: 'i' } },
-        { location: { $regex: search, $options: 'i' } },
+        { 'user.introduction': { $regex: search, $options: 'i' } },
       ];
     }
 
     if (role) {
       query['role.name'] = role;
+    }
+
+    if (nationality) {
+      query.country = nationality;
+    }
+
+    if (available) {
+      query.availability_for_work = true;
     }
 
     // Get total count
@@ -210,6 +217,9 @@ export async function GET(request: NextRequest) {
 
     // Get unique roles for filter
     const roles = await collection.distinct('role.name');
+    
+    // Get unique nationalities for filter
+    const nationalities = await collection.distinct('country');
 
     return NextResponse.json({
       talents,
@@ -221,6 +231,7 @@ export async function GET(request: NextRequest) {
       },
       filters: {
         roles: roles.filter(Boolean),
+        nationalities: nationalities.filter(Boolean).sort(),
       },
     }, {
       headers: getCorsHeaders()
