@@ -49,18 +49,72 @@ function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
+  // Helper to parse URL params even from malformed URLs
+  const parseUrlParams = () => {
+    if (typeof window === 'undefined') {
+      return {
+        page: '1',
+        search: '',
+        role: '',
+        nationality: '',
+        available: 'false',
+      };
+    }
+    
+    const search = window.location.search;
+    const params: Record<string, string> = {};
+    
+    // Handle malformed URLs with multiple ? by splitting and parsing each part
+    const parts = search.split('?').filter(Boolean);
+    parts.forEach(part => {
+      // Parse each part as if it were a query string
+      const pairs = part.split('&');
+      pairs.forEach(pair => {
+        const [key, value] = pair.split('=');
+        // Decode both key and value, replacing + with spaces first (URLSearchParams format)
+        const decodedKey = decodeURIComponent(key.replace(/\+/g, ' '));
+        const decodedValue = value ? decodeURIComponent(value.replace(/\+/g, ' ')) : '';
+        if (decodedKey && decodedValue !== undefined) {
+          // If key already exists, keep the last value (or first, depending on preference)
+          // For page, we want to prioritize later occurrences in malformed URLs
+          if (decodedKey === 'page' && params.page) {
+            // Keep the later page number if we have multiple
+            const existingPage = parseInt(params.page) || 0;
+            const newPage = parseInt(decodedValue) || 0;
+            if (newPage > existingPage) {
+              params[decodedKey] = decodedValue;
+            }
+          } else {
+            params[decodedKey] = decodedValue;
+          }
+        }
+      });
+    });
+    
+    return {
+      page: params.page || '1',
+      search: params.search || '',
+      role: params.role || '',
+      nationality: params.nationality || '',
+      available: params.available === 'true' ? 'true' : 'false',
+    };
+  };
+  
+  const initialParams = parseUrlParams();
+  
   const [talents, setTalents] = useState<Talent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState(searchParams.get('search') || '');
-  const [roleFilter, setRoleFilter] = useState(searchParams.get('role') || '');
-  const [nationalityFilter, setNationalityFilter] = useState(searchParams.get('nationality') || '');
-  const [page, setPage] = useState(parseInt(searchParams.get('page') || '1'));
+  const [search, setSearch] = useState(initialParams.search);
+  const [roleFilter, setRoleFilter] = useState(initialParams.role);
+  const [nationalityFilter, setNationalityFilter] = useState(initialParams.nationality);
+  const [page, setPage] = useState(parseInt(initialParams.page) || 1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [roles, setRoles] = useState<string[]>([]);
   const [nationalities, setNationalities] = useState<string[]>([]);
-  const [availableOnly, setAvailableOnly] = useState(searchParams.get('available') === 'true');
-  const [debouncedSearch, setDebouncedSearch] = useState(searchParams.get('search') || '');
+  const [availableOnly, setAvailableOnly] = useState(initialParams.available === 'true');
+  const [debouncedSearch, setDebouncedSearch] = useState(initialParams.search);
+  const [pageInputValue, setPageInputValue] = useState(initialParams.page);
 
   // Helper function to get initials from name
   const getInitials = (name: string) => {
@@ -71,27 +125,101 @@ function HomeContent() {
     return name.substring(0, 2).toUpperCase();
   };
 
-  // Update URL params when filters change
+  // Track if this is the initial mount to prevent premature URL updates
+  const [isInitialMount, setIsInitialMount] = useState(true);
+  
+  // Sync state from URL params on mount and URL changes
   useEffect(() => {
+    const parsedParams = parseUrlParams();
+    
+    const urlPage = parsedParams.page;
+    const urlSearch = parsedParams.search;
+    const urlRole = parsedParams.role;
+    const urlNationality = parsedParams.nationality;
+    const urlAvailable = parsedParams.available === 'true';
+
+    // Always sync page from URL (urlPage always exists, defaults to '1')
+    const parsedPage = parseInt(urlPage) || 1;
+    if (parsedPage !== page) {
+      setPage(parsedPage);
+      setPageInputValue(parsedPage.toString());
+    }
+    if (urlSearch !== search) setSearch(urlSearch);
+    if (urlRole !== roleFilter) setRoleFilter(urlRole);
+    if (urlNationality !== nationalityFilter) setNationalityFilter(urlNationality);
+    if (urlAvailable !== availableOnly) setAvailableOnly(urlAvailable);
+    
+    // Mark initial mount as complete after first render
+    if (isInitialMount) {
+      setIsInitialMount(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  // Sync pageInputValue when page changes from other sources (buttons, etc)
+  useEffect(() => {
+    setPageInputValue(page.toString());
+  }, [page]);
+
+  // Update URL params when filters change (but not on initial mount to avoid overwriting malformed URLs)
+  useEffect(() => {
+    // Skip URL update on initial mount to allow malformed URLs to be parsed first
+    if (isInitialMount) {
+      return;
+    }
+    
     const params = new URLSearchParams();
     if (debouncedSearch) params.set('search', debouncedSearch);
     if (roleFilter) params.set('role', roleFilter);
     if (nationalityFilter) params.set('nationality', nationalityFilter);
     if (availableOnly) params.set('available', 'true');
-    if (page > 1) params.set('page', page.toString());
+    // Always include page parameter if it's greater than 1
+    if (page > 1) {
+      params.set('page', page.toString());
+    }
     
-    const newUrl = params.toString() ? `/?${params.toString()}` : '/';
-    router.replace(newUrl, { scroll: false });
-  }, [debouncedSearch, roleFilter, nationalityFilter, availableOnly, page, router]);
+    const newSearch = params.toString();
+    const newUrl = newSearch ? `/?${newSearch}` : '/';
+    
+    // Only update URL if it's different to avoid unnecessary redirects
+    // Normalize current search by parsing and reconstructing to handle malformed URLs
+    const currentParams = parseUrlParams();
+    const normalizedCurrentParams = new URLSearchParams();
+    if (currentParams.search) normalizedCurrentParams.set('search', currentParams.search);
+    if (currentParams.role) normalizedCurrentParams.set('role', currentParams.role);
+    if (currentParams.nationality) normalizedCurrentParams.set('nationality', currentParams.nationality);
+    if (currentParams.available === 'true') normalizedCurrentParams.set('available', 'true');
+    // Always include page if it's in the current URL and > 1, to compare properly
+    const currentPage = parseInt(currentParams.page) || 1;
+    if (currentPage > 1) {
+      normalizedCurrentParams.set('page', currentParams.page);
+    }
+    const normalizedCurrentSearchStr = normalizedCurrentParams.toString();
+    
+    // Only update if the normalized params are different
+    if (normalizedCurrentSearchStr !== newSearch) {
+      router.replace(newUrl, { scroll: false });
+    }
+  }, [debouncedSearch, roleFilter, nationalityFilter, availableOnly, page, router, isInitialMount]);
 
-  // Debounce search
+  // Track if search was triggered by user (Enter key) vs debounce
+  const [isSearchTriggered, setIsSearchTriggered] = useState(false);
+
+  // Debounce search (unless triggered by Enter key)
   useEffect(() => {
-    const timer = setTimeout(() => {
+    if (isSearchTriggered) {
+      // If search was triggered by Enter, apply immediately
       setDebouncedSearch(search);
       setPage(1); // Reset to first page on search
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [search]);
+      setIsSearchTriggered(false);
+    } else {
+      const timer = setTimeout(() => {
+        setDebouncedSearch(search);
+        setPage(1); // Reset to first page on search
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [search, isSearchTriggered]);
 
   // Fetch talents
   useEffect(() => {
@@ -189,7 +317,7 @@ function HomeContent() {
                 <div className="flex items-center gap-2">
                   {talent.external_profiles.map((profile) => (
                     <a href={profile.public_url} target="_blank" rel="noopener noreferrer" key={profile.id}>
-                      <Image src={profile.site.logo.thumbnail} alt={profile.site.name} width={20} height={20} className="rounded-full" />
+                      <Image src={profile.site.logo.thumbnail} alt={profile.site.name} width={20} height={20} className="rounded-full bg-white" />
                     </a>
                   ))}
                 </div>
@@ -226,6 +354,13 @@ function HomeContent() {
                 placeholder="Search by name, introduction, or headline..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    setIsSearchTriggered(true);
+                    // Trigger the debounce effect by updating search state
+                    // The effect will see isSearchTriggered is true and apply immediately
+                  }
+                }}
                 className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
               />
             </div>
@@ -307,12 +442,24 @@ function HomeContent() {
                   type="number"
                   min={1}
                   max={totalPages}
-                  value={page}
+                  value={pageInputValue}
                   onChange={(e) => {
-                    const newPage = parseInt(e.target.value);
-                    if (newPage >= 1 && newPage <= totalPages) {
-                      setPage(newPage);
+                    setPageInputValue(e.target.value);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const newPage = parseInt(pageInputValue) || 1;
+                      const validPage = Math.max(1, Math.min(totalPages, newPage));
+                      setPage(validPage);
+                      setPageInputValue(validPage.toString());
+                      e.currentTarget.blur();
                     }
+                  }}
+                  onBlur={(e) => {
+                    const newPage = parseInt(pageInputValue) || 1;
+                    const validPage = Math.max(1, Math.min(totalPages, newPage));
+                    setPage(validPage);
+                    setPageInputValue(validPage.toString());
                   }}
                   className="w-20 px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-center focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
                 />
